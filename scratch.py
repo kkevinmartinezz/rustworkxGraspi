@@ -250,7 +250,7 @@ def main():
     print(graph.node_indices())
     bfs(graph, 2)
     dfs(graph,2)
-    shortest_path(filteredGraph,0,0)
+    shortest_path(graph,0,0)
 
 if __name__=="__main__":
     main()
