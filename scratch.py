@@ -2,7 +2,7 @@ import rustworkx as rx
 import math
 
 from graphviz.dot import subgraph, graph_head
-from numpy.ma.core import append
+from numpy.ma.core import append, empty
 from rustworkx import dfs_search, dfs_edges, bfs_search, dijkstra_shortest_paths, PyGraph, PyDiGraph, dijkstra_search
 from rustworkx.visualization import mpl_draw
 import matplotlib.pyplot as plt
@@ -60,6 +60,7 @@ class Edge:
         self.weight = weight
 
 graph = rx.PyGraph()
+#filterGraph = rx.PyGraph
 
 def createGraph(filename):
     with open(filename, "r") as f:
@@ -77,7 +78,6 @@ def createGraph(filename):
         prevNode = None
 
         line_idx = 1
-        cathode = graph.add_node(Node("Cathode",2,0,0,0))
         # Graph creation
         for z in range(dimZ):
             for y in range(dimY):
@@ -88,8 +88,6 @@ def createGraph(filename):
                     currRow[x] = node
                     currLayer[y][x] = node
 
-                    if y == 0:
-                        graph.add_edge(node, cathode,Edge(node,cathode,1))
                     # Left of the node
                     if prevNode != None:
                         graph.add_edge(node, prevNode, Edge(node, prevNode, 1))
@@ -118,20 +116,15 @@ def createGraph(filename):
                 prevRow, currRow = currRow, [None] * dimX
 
             prevLayer, currLayer = currLayer, [[None] * dimX for i in range(dimY)]
-        # print(dimX)
-        # print(dimY)
-        # print(dimZ)
-        #add_cathode_node(dimX, dimY, dimZ)
+
+    add_cathode_node(dimX, dimY, dimZ)
 
 def add_cathode_node(dimX,dimY,dimZ):
-    node = graph.add_node(Node())
+    node = graph.add_node(Node("Interface", 2,0,0,0))
     currNodes = graph.node_indices()
     for z in range(dimZ):
         for x in range(dimX):
-            graph.add_edge(node, currNodes[x], Edge(node, currNodes[x], 1))
-
-
-    return 0
+            graph.add_edge(node, currNodes[z * dimX * x], Edge(node, currNodes[z * dimX + x], 1))
 
 def node_attr_fn(node):
     attr_dict = {
@@ -161,15 +154,10 @@ def visualizeGraphMPL(g):
     graphviz_draw(graph, node_attr_fn=node_attr_fn, method ="neato")
 
 def visualizeGraphGV(g, file):
- # for node in graph.node_indices():
-     # graph[node] = graph.get_node_data(node)
     graph_dict = {}
     graphviz_draw(g, filename=file, node_attr_fn=node_attr_fn,
                   graph_attr=graph_dict, method ="neato")
 
-
-#createGraph(file1000)
-# visualizeGraph()
 
 def testGraphRunTime(filename, visualize, times):
     totalTime = 0
@@ -186,43 +174,44 @@ def testGraphRunTime(filename, visualize, times):
             totalTime += time.time() - start
     print(totalTime / times)
 
+
 def connectedComponents(edge):
     node1 = graph.get_node_data(edge.node1)
     node2 = graph.get_node_data(edge.node2)
 
     # Checks if the edge between the two nodes have different colors
-    if ( (node1.color == 0 and node2.color == 1) or (node1.color == 1 and node2.color == 0) ):
+    if (node1.color == 0 and node2.color == 1) or (node1.color == 1 and node2.color == 0):
         return False
     return True
 
-filteredGraph = PyGraph()
-def filterGraph(visualize):
-    edges = graph.filter_edges(connectedComponents)
+
+def filterGraph(g, visualize):
+    global filteredGraph
+
+    edges = g.filter_edges(connectedComponents)
+
     edgeList = []
-
     for edge in edges:
-        node1 = graph.get_edge_data_by_index(edge).node1
-        node2 = graph.get_edge_data_by_index(edge).node2
+        node1 = g.get_edge_data_by_index(edge).node1
+        node2 = g.get_edge_data_by_index(edge).node2
         edgeList.append( (node1, node2) )
-    #subgraph = graph.edge_subgraph(edgeList)
-    filteredGraph = graph.edge_subgraph(edgeList)
-    #filteredGraph.add_nodes_from(graph.nodes())
-    if visualize:
-        print(filteredGraph.edge_indices())
-        visualizeGraphGV(filteredGraph, "images/rustworkx_subgraph.jpg")
 
+    filteredGraph = g.edge_subgraph(edgeList)
+    if visualize:
+        visualizeGraphGV(filteredGraph, "images/rustworkx_subgraph.jpg")
     return edges
 
-def testFilterGraph(filename, visualize, times):
+def testFilterGraph(g, filename, visualize, times):
     totalTime = 0
     for i in range(times):
         start = time.time()
         createGraph(filename)
-        filterGraph(visualize)
+        filterGraph(g, visualize)
         totalTime += time.time() - start
     print(totalTime / times)
+    return totalTime / times
 
-#Uses DFS to traverse graph and print's all edges reachele from source node
+#Uses DFS to traverse graph and print's all edges reachable from source node
 def dfs(g, source):
     nodes = []
     nodes.append(source)
@@ -238,19 +227,30 @@ def bfs(g, source):
     rx.bfs_search(g, nodes, visBFS)
     print('BFS Edges:', visBFS.edges)
 
-#finds shortest path between a source and target node
-def shortest_path(g, source, target):
-    print('Shortest Path between', source, 'and', target , dijkstra_shortest_paths(g, source, target, weight_fn=None, default_weight=1))
+#finds shortest path between the cathode and target node
+def shortest_path_from_cathode(g, target):
+    cathode = g.num_nodes()-1
+    path = dijkstra_shortest_paths(g, cathode, target, weight_fn=None, default_weight=1)
+    if(len(path) == 0):
+        print("No Path Found")
+    else:
+        print('Shortest Path between', cathode, 'and', target , path)
 
+def shortest_path_btwn_nodes(g, source, target):
+    path = dijkstra_shortest_paths(g, source, target, weight_fn=None, default_weight=1)
+    if(len(path) == 0):
+        print("No Path Found")
+    else:
+        print('Shortest Path between', source, 'and', target , path)
 
 # Defining main function
 def main():
     testGraphRunTime(file10, True, 1)
-    testFilterGraph(file10,True,1)
-    print(graph.node_indices())
-    bfs(graph, 2)
-    dfs(graph,2)
-    shortest_path(graph,0,0)
+    testFilterGraph(graph, file10,True,1)
+    #bfs(graph, 2)
+    #dfs(graph,2)
+    shortest_path_from_cathode(filteredGraph,35)
+    #shortest_path_btwn_nodes(filteredGraph, 2,49)
 
 if __name__=="__main__":
     main()
